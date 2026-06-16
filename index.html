@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบสั่งสินค้าเกษตรสหกรณ์</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome & Google Fonts -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Sarabun', sans-serif; background-color: #f3f4f6; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #166534;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Grayscale for out of stock */
+        .grayscale { filter: grayscale(100%); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // Mock Data (จำลองข้อมูลเพื่อทดสอบกรณีไม่มี Backend)
+        const MOCK_PRODUCTS = [
+            { id: 'P001', name: 'ข้าวหอมมะลิ 105 (คัดพิเศษ) 5กก.', category: 'ข้าวสาร', price: 185, unit: 'ถุง', image: 'https://placehold.co/400x400/eab308/white?text=Rice+5kg', status: 'พร้อมจำหน่าย', stock: 10 },
+            { id: 'P002', name: 'ข้าวสารหอมมะลิ ถุงละ 15 กิโล', category: 'ข้าวสาร', price: 540, unit: 'ถุง', image: 'https://placehold.co/400x400/eab308/white?text=Rice+15kg', status: 'สินค้าหมด', stock: 0 },
+            { id: 'P003', name: 'ปุ๋ยยูเรีย 46-0-0 (ตรากระต่าย)', category: 'ปุ๋ยเคมี', price: 850, unit: 'กระสอบ', image: 'https://placehold.co/400x400/15803d/white?text=Fertilizer', status: 'พร้อมจำหน่าย', stock: 5 },
+            { id: 'P004', name: 'ปุ๋ยสูตรเสมอ 15-15-15 50kg', category: 'ปุ๋ยเคมี', price: 920, unit: 'กระสอบ', image: 'https://placehold.co/400x400/166534/white?text=15-15-15', status: 'พร้อมจำหน่าย', stock: 20 },
+        ];
+
+        // ฟังก์ชันเดาน้ำหนัก (Smart Weight)
+        const extractWeight = (name, unit, category) => {
+            const textToSearch = (name + " " + unit).toLowerCase().replace(/\s+/g, '');
+            const weightMatch = textToSearch.match(/(\d+(?:\.\d+)?)(kg|kk|กก|ก\.ก|กิโล)/);
+            if (weightMatch) return parseFloat(weightMatch[1]);
+            if (textToSearch.includes('กระสอบ')) return 50;
+            if (textToSearch.includes('ถัง')) return 15;
+            if (category.includes('ปุ๋ย')) return 50;
+            if (category.includes('ข้าว')) return 5;
+            return 1;
+        };
+
+        const CartContent = ({ 
+            cart, updateQty, removeFromCart, 
+            memberId, setMemberId, 
+            memberName, setMemberName, 
+            phoneNumber, setPhoneNumber, 
+            address, setAddress, 
+            slipImage, setSlipImage, 
+            subTotal, shippingCost, totalWeight, totalAmount, 
+            handleSubmitOrder, submitting 
+        }) => {
+
+            const handleFileChange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    if (file.size > 5 * 1024 * 1024) return alert('ขนาดไฟล์ใหญ่เกินไป (ต้องไม่เกิน 5MB)');
+                    const reader = new FileReader();
+                    reader.onloadend = () => setSlipImage(reader.result);
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // [NEW FEATURE] Start - State สำหรับเก็บ URL ของ QR Code
+            const [qrUrl, setQrUrl] = useState('');
+            useEffect(() => {
+                if (totalAmount > 0) {
+                    if (window.google && window.google.script) {
+                        google.script.run.withSuccessHandler(setQrUrl).getPromptPayQR(totalAmount);
+                    } else {
+                        setQrUrl(`https://promptpay.io/0123456789012/${totalAmount}.png`); // แสดงตัวอย่างเมื่อรัน Local
+                    }
+                } else {
+                    setQrUrl('');
+                }
+            }, [totalAmount]);
+            // [NEW FEATURE] End
+
+            if (cart.length === 0) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-64 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl m-4 bg-gray-50/50">
+                        <i className="fas fa-shopping-basket text-4xl mb-3 text-gray-300"></i>
+                        <p>ยังไม่มีสินค้าในตะกร้า</p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-4 bg-green-50 border-b border-green-100 flex justify-between items-center">
+                        <h2 className="font-bold text-green-800 flex items-center gap-2">
+                            <i className="fas fa-receipt"></i> รายการสั่งซื้อ ({cart.reduce((s,i)=>s+i.qty, 0)})
+                        </h2>
+                    </div>
+
+                    {/* // [UX FIX] ปลดล็อกความสูง ให้ตะกร้ายืดหยุ่นตามเนื้อหา */}
+                    <div className="flex-shrink-0 lg:flex-shrink max-h-[40vh] lg:max-h-none overflow-y-auto p-4 space-y-3 custom-scrollbar">
+                        {cart.map(item => (
+                            <div key={item.id} className="flex gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-sm">
+                                <div className="w-14 h-14 bg-gray-100 rounded-md overflow-hidden flex-shrink-0 relative">
+                                    <img src={item.image} className="w-full h-full object-cover" onError={(e)=>e.target.src='https://placehold.co/100'} />
+                                </div>
+                                <div className="flex-grow flex flex-col justify-between">
+                                    <div className="flex justify-between items-start">
+                                        <div className="pr-2">
+                                            <h4 className="text-sm font-bold text-gray-800 line-clamp-1">{item.name}</h4>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+                                                    <i className="fas fa-weight-hanging text-gray-400 mr-1"></i>
+                                                    {item.weight} กก.
+                                                </span>
+                                                {/* แสดงแจ้งเตือนถ้ายอดใกล้เต็มสต๊อก */}
+                                                {item.qty >= item.stock && (
+                                                    <span className="text-[10px] text-red-500 font-bold px-1">
+                                                        (เต็มจำนวนสต๊อก)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition"><i className="fas fa-times"></i></button>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-2">
+                                        <div className="flex items-center gap-2 bg-gray-50 rounded-lg border px-1">
+                                            <button onClick={() => updateQty(item.id, -1)} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-red-500"><i className="fas fa-minus text-xs"></i></button>
+                                            <span className="text-sm font-bold w-6 text-center text-gray-800">{item.qty}</span>
+                                            {/* ปุ่มบวก จะกดไม่ได้ถ้าจำนวนเท่ากับสต๊อก */}
+                                            <button 
+                                                onClick={() => updateQty(item.id, 1)} 
+                                                disabled={item.qty >= item.stock}
+                                                className={`w-6 h-6 flex items-center justify-center rounded ${item.qty >= item.stock ? 'text-gray-300 cursor-not-allowed' : 'text-green-600 hover:bg-green-100'}`}
+                                            >
+                                                <i className="fas fa-plus text-xs"></i>
+                                            </button>
+                                        </div>
+                                        <span className="font-bold text-gray-700">฿{(item.price * item.qty).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="p-4 bg-gray-50 border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] overflow-y-auto custom-scrollbar flex-grow">
+                        <div className="space-y-4 mb-4">
+                            <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"><i className="fas fa-address-card mr-1"></i> ข้อมูลจัดส่งสินค้า</h3>
+                                <div className="space-y-2">
+                                    <input type="text" placeholder="ชื่อ-สกุล (ผู้รับสินค้า) *" className="w-full px-3 py-2 text-sm border rounded outline-none focus:border-green-500" value={memberName} onChange={(e) => setMemberName(e.target.value)} />
+                                    <input type="text" placeholder="รหัสสมาชิก (ถ้ามี)" className="w-full px-3 py-2 text-sm border rounded outline-none focus:border-green-500" value={memberId} onChange={(e) => setMemberId(e.target.value)} />
+                                    <input type="tel" placeholder="เบอร์โทรศัพท์ *" className="w-full px-3 py-2 text-sm border rounded outline-none focus:border-green-500" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+                                    <textarea placeholder="ที่อยู่จัดส่งโดยละเอียด *" className="w-full px-3 py-2 text-sm border rounded outline-none focus:border-green-500 resize-none h-20" value={address} onChange={(e) => setAddress(e.target.value)}></textarea>
+                                </div>
+                            </div>
+
+                            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 relative overflow-hidden">
+                                <h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2 border-b border-blue-200 pb-1">
+                                    <i className="fas fa-money-bill-wave mr-1"></i> ชำระเงิน
+                                </h3>
+                                <div className="text-sm text-gray-800 space-y-1 relative z-10">
+                                    <div className="flex justify-between items-center"><span className="text-gray-600">ธนาคาร</span><span className="font-bold text-blue-700">กรุงไทย</span></div>
+                                    <div className="flex justify-between items-center mt-1"><span className="text-gray-600">เลขที่บัญชี</span><span className="font-bold text-xl text-blue-800 tracking-wider bg-white px-2 py-0.5 rounded border border-blue-100">320-0-56448-2</span></div>
+                                    <div className="text-xs text-gray-600 text-right mt-1 pt-1 border-t border-blue-200/50">ชื่อบัญชี: <span className="font-semibold">สหกรณ์การเกษตรชุมพลบุรี จำกัด</span></div>
+                                    
+                                    {/* // [NEW FEATURE] Start - แสดง QR Code ตรงกรอบชำระเงิน */}
+                                    {qrUrl && totalAmount > 0 && (
+                                        <div className="mt-3 flex flex-col items-center justify-center p-3 bg-white rounded-lg border border-blue-100 shadow-sm transition-all duration-300">
+                                            <p className="text-[12px] text-blue-800 font-bold mb-2"><i className="fas fa-qrcode"></i> สแกนพร้อมเพย์ (PromptPay)</p>
+                                            <img src={qrUrl} alt="PromptPay QR Code" className="w-32 h-32 object-contain rounded-md border border-gray-100 p-1" />
+                                            <p className="text-[11px] text-gray-500 mt-2 font-medium">ยอดโอน: ฿{totalAmount.toLocaleString()}</p>
+                                        </div>
+                                    )}
+                                    {/* // [NEW FEATURE] End */}
+                                </div>
+                            </div>
+
+                            <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"><i className="fas fa-file-invoice mr-1"></i> หลักฐานโอนเงิน *</h3>
+                                <div className={`relative border-2 border-dashed rounded-lg p-3 text-center transition cursor-pointer ${slipImage ? 'border-green-400 bg-green-50' : 'border-gray-300 hover:bg-gray-50'}`}>
+                                    <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                    {slipImage ? (
+                                        <div className="relative">
+                                            <p className="text-xs text-green-700 font-bold mb-2"><i className="fas fa-check-circle"></i> แนบรูปเรียบร้อย</p>
+                                            <img src={slipImage} alt="Slip Preview" className="max-h-32 mx-auto rounded shadow-sm border border-green-200" />
+                                            <button onClick={(e)=>{e.preventDefault(); setSlipImage(null)}} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-6 h-6 text-xs shadow flex items-center justify-center"><i className="fas fa-times"></i></button>
+                                        </div>
+                                    ) : (
+                                        <div className="text-gray-400 py-2">
+                                            <i className="fas fa-cloud-upload-alt text-2xl mb-1 text-gray-300"></i>
+                                            <p className="text-xs font-medium">แตะเพื่อแนบรูปสลิป</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="pt-3 border-t-2 border-dashed border-gray-200 space-y-1">
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>ยอดสินค้ารวม</span>
+                                    <span>฿{subTotal.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-gray-600">
+                                    <span>น้ำหนักรวม ({totalWeight.toLocaleString()} กก.)</span>
+                                    <span className="text-orange-600 font-medium">+ ค่าส่ง ฿{shippingCost.toLocaleString()}</span>
+                                </div>
+                                <div className="text-[10px] text-gray-400 text-right pb-1">
+                                    (1-5กก: 40฿, 15-39กก: 150฿, 40กก+: 400฿)
+                                </div>
+                                <div className="flex justify-between items-end pt-2 mt-2 border-t border-gray-100">
+                                    <span className="text-gray-800 font-bold">ยอดชำระสุทธิ</span>
+                                    <span className="text-2xl font-bold text-green-700">฿{totalAmount.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {/* // [UX FIX] แยกปุ่มออกมายึดติดด้านล่างสุด (Sticky Bottom) เสมอ */}
+                    <div className="p-4 bg-white border-t border-gray-200 mt-auto sticky bottom-0 z-20 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
+                        <button onClick={handleSubmitOrder} disabled={submitting || !memberName || !phoneNumber || !address || !slipImage} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                            {submitting ? <div className="loader w-5 h-5 border-white border-t-transparent"></div> : <i className="fas fa-paper-plane"></i>}
+                            {submitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันการสั่งซื้อ'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const [products, setProducts] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [cart, setCart] = useState([]);
+            const [categoryFilter, setCategoryFilter] = useState('ทั้งหมด');
+            const [isCartOpen, setIsCartOpen] = useState(false);
+            const [isSuccess, setIsSuccess] = useState(false);
+            const [orderId, setOrderId] = useState('');
+            const [memberId, setMemberId] = useState('');
+            const [memberName, setMemberName] = useState('');
+            const [phoneNumber, setPhoneNumber] = useState('');
+            const [address, setAddress] = useState(''); 
+            const [slipImage, setSlipImage] = useState(null);
+            const [submitting, setSubmitting] = useState(false);
+            
+            // [UX FIX] เพิ่ม State และเขียนทับ alert() ให้เป็น Toast Notification
+            const [toast, setToast] = useState({ show: false, message: '', type: 'error' });
+            useEffect(() => {
+                window.alert = (message) => {
+                    setToast({ show: true, message, type: 'error' });
+                    setTimeout(() => setToast({ show: false, message: '', type: 'error' }), 3000);
+                };
+            }, []);
+
+            useEffect(() => {
+                if (window.google && window.google.script) {
+                    google.script.run.withSuccessHandler((data) => {
+                        const productsWithWeight = data.map(p => ({
+                            ...p,
+                            weight: extractWeight(p.name || '', p.unit || '', p.category || ''),
+                            stock: Number(p.stock) || 0 // ตรวจสอบว่ามี Stock
+                        }));
+                        setProducts(productsWithWeight);
+                        setLoading(false);
+                    }).withFailureHandler(() => {
+                        const mockWithWeight = MOCK_PRODUCTS.map(p => ({
+                             ...p,
+                             weight: extractWeight(p.name, p.unit, p.category)
+                        }));
+                        setProducts(mockWithWeight);
+                        setLoading(false);
+                    }).getProductData();
+                } else {
+                    const mockWithWeight = MOCK_PRODUCTS.map(p => ({
+                         ...p,
+                         weight: extractWeight(p.name, p.unit, p.category)
+                    }));
+                    setTimeout(() => { setProducts(mockWithWeight); setLoading(false); }, 1000);
+                }
+            }, []);
+
+            const categories = useMemo(() => ['ทั้งหมด', ...new Set(products.map(p => p.category))], [products]);
+            const filteredProducts = useMemo(() => categoryFilter === 'ทั้งหมด' ? products : products.filter(p => p.category === categoryFilter), [products, categoryFilter]);
+            
+            const subTotal = useMemo(() => cart.reduce((sum, item) => sum + (item.price * item.qty), 0), [cart]);
+            const totalWeight = useMemo(() => cart.reduce((sum, item) => sum + (item.weight * item.qty), 0), [cart]);
+            
+            const shippingCost = useMemo(() => {
+                if (totalWeight === 0) return 0;
+                if (totalWeight <= 5) return 40;
+                if (totalWeight < 40) return 150;
+                return 400;
+            }, [totalWeight]);
+
+            const totalAmount = subTotal + shippingCost;
+
+            const addToCart = (product) => {
+                // ตรวจสอบสต๊อกและสถานะก่อนเพิ่ม
+                if (product.status === 'สินค้าหมด' || product.stock <= 0) {
+                    return alert('ขออภัย สินค้านี้หมดชั่วคราว');
+                }
+
+                setCart(prev => {
+                    const existing = prev.find(item => item.id === product.id);
+                    if (existing) {
+                        // ถ้ามีในตะกร้าแล้ว เช็คว่าจะเกินสต๊อกไหม
+                        if (existing.qty >= product.stock) {
+                            alert(`ขออภัย สินค้ามีเพียง ${product.stock} ชิ้น`);
+                            return prev;
+                        }
+                        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
+                    }
+                    return [...prev, { ...product, qty: 1 }];
+                });
+            };
+
+            const removeFromCart = (id) => setCart(prev => prev.filter(item => item.id !== id));
+            
+            const updateQty = (id, delta) => {
+                setCart(prev => prev.map(item => {
+                    if (item.id === id) {
+                        const productInfo = products.find(p => p.id === id);
+                        const stockLimit = productInfo ? productInfo.stock : 999;
+                        
+                        // ห้ามเพิ่มเกินสต๊อก
+                        if (delta > 0 && item.qty >= stockLimit) {
+                            return item; 
+                        }
+                        const newQty = item.qty + delta;
+                        return newQty > 0 ? { ...item, qty: newQty } : item;
+                    }
+                    return item;
+                }));
+            };
+
+            const handleSubmitOrder = () => {
+                if (cart.length === 0) return alert('กรุณาเลือกสินค้า');
+                setSubmitting(true);
+                const orderData = { 
+                    memberId: memberId || 'Guest', 
+                    memberName, 
+                    phoneNumber, 
+                    address, 
+                    slipBase64: slipImage, 
+                    cart, 
+                    total: totalAmount 
+                };
+
+                if (window.google && window.google.script) {
+                    google.script.run.withSuccessHandler((res) => {
+                        if (res.status === 'success') {
+                            setOrderId(res.orderId);
+                            setCart([]); setMemberName(''); setPhoneNumber(''); setAddress(''); setSlipImage(null);
+                            setIsSuccess(true); setIsCartOpen(false);
+                        } else { alert('Error: ' + res.message); }
+                        setSubmitting(false);
+                    }).withFailureHandler((err) => { alert('Error: ' + err); setSubmitting(false); }).submitOrder(orderData);
+                } else {
+                    setTimeout(() => {
+                        setOrderId('TEST-ORDER'); setIsSuccess(true); setIsCartOpen(false); setSubmitting(false);
+                    }, 1500);
+                }
+            };
+
+            if (isSuccess) {
+                return (
+                    <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center p-6 text-center">
+                        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-sm w-full fade-in">
+                            <i className="fas fa-check-circle text-6xl text-green-500 mb-4"></i>
+                            <h2 className="text-2xl font-bold text-gray-800 mb-2">สั่งซื้อสำเร็จ!</h2>
+                            <p className="text-gray-600 mb-4">รหัสคำสั่งซื้อ: <b>{orderId}</b></p>
+                            <button onClick={() => setIsSuccess(false)} className="bg-green-600 text-white py-2 px-6 rounded-lg font-bold">กลับหน้าหลัก</button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen flex flex-col pb-20 lg:pb-0">
+                    {/* // [UX FIX] กล่องแสดงผล Toast Notification */}
+                    {toast.show && (
+                        <div className="fixed top-5 left-1/2 transform -translate-x-1/2 z-[100] px-5 py-3 rounded-full shadow-2xl font-bold flex items-center gap-2 fade-in bg-red-600 text-white text-sm">
+                            <i className="fas fa-exclamation-circle text-lg"></i> {toast.message}
+                        </div>
+                    )}
+                    <header className="bg-white shadow-sm sticky top-0 z-20 border-b border-gray-200">
+                        <div className="max-w-7xl mx-auto px-4 lg:px-6 py-3 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center text-white shadow-lg"><i className="fas fa-seedling text-xl"></i></div>
+                                <div><h1 className="text-xl font-bold text-gray-800">สหกรณ์การเกษตร</h1><span className="text-xs text-green-600">ชุมพลบุรี จำกัด</span></div>
+                            </div>
+                            <button onClick={() => setIsCartOpen(true)} className="lg:hidden relative p-2 text-gray-600 hover:bg-gray-100 rounded-full">
+                                <i className="fas fa-shopping-cart text-xl"></i>
+                                {cart.length > 0 && <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] min-w-[1.25rem] h-5 flex items-center justify-center rounded-full font-bold border-2 border-white">{cart.reduce((s, i) => s + i.qty, 0)}</span>}
+                            </button>
+                        </div>
+                    </header>
+
+                    <div className="flex-grow bg-gray-50/50">
+                        <div className="max-w-7xl mx-auto px-4 lg:px-6 py-6">
+                            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                                {/* // [NEW FIX] Start - ปรับสัดส่วนพื้นที่หน้าจอฝั่งซ้าย (จาก 3/4 เป็น 2/3) */}
+                                <div className="w-full lg:w-2/3 flex flex-col gap-6">
+                                {/* // [NEW FIX] End */}
+                                    {categories.length > 1 && (
+                                        <div className="bg-white p-3 rounded-xl shadow-sm border border-gray-200 overflow-x-auto flex gap-2">
+                                            {categories.map(cat => (
+                                                <button key={cat} onClick={() => setCategoryFilter(cat)} className={`px-5 py-2 rounded-lg text-sm font-medium transition ${categoryFilter === cat ? 'bg-green-600 text-white shadow-md' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>{cat}</button>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {loading ? <div className="text-center py-20 text-gray-400">กำลังโหลด...</div> : (
+                                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            {filteredProducts.map(product => {
+                                                // ตรวจสอบสถานะว่า "หมด" หรือไม่
+                                                const isOutOfStock = product.status === 'สินค้าหมด' || product.stock <= 0;
+
+                                                return (
+                                                    <div key={product.id} 
+                                                        onClick={() => !isOutOfStock && addToCart(product)} 
+                                                        className={`bg-white rounded-xl shadow-sm border hover:shadow-lg transition cursor-pointer overflow-hidden group ${isOutOfStock ? 'opacity-75' : ''}`}
+                                                    >
+                                                        <div className="h-40 bg-gray-100 relative overflow-hidden">
+                                                            <img src={product.image} className={`w-full h-full object-cover transition duration-500 ${isOutOfStock ? 'grayscale' : 'group-hover:scale-110'}`} onError={(e)=>e.target.src='https://placehold.co/400'} />
+                                                            
+                                                            {/* Overlay สำหรับสินค้าหมด */}
+                                                            {isOutOfStock ? (
+                                                                <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
+                                                                    <span className="bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold border border-white">สินค้าหมด</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="absolute inset-0 bg-black/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                                                    <div className="bg-white rounded-full p-2 shadow"><i className="fas fa-plus text-green-700"></i></div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="p-4">
+                                                            <h3 className="text-sm font-bold text-gray-800 line-clamp-2 h-10">{product.name}</h3>
+                                                            <div className="flex justify-between items-end mt-2">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-xs text-gray-500">{product.unit}</span>
+                                                                    {/* แสดงจำนวนคงเหลือ */}
+                                                                    {!isOutOfStock ? (
+                                                                        <span className="text-[10px] text-green-600 bg-green-50 px-1 rounded w-max mt-0.5 border border-green-100">เหลือ {product.stock}</span>
+                                                                    ) : (
+                                                                        <span className="text-[10px] text-red-500 mt-0.5">สินค้าหมดชั่วคราว</span>
+                                                                    )}
+                                                                </div>
+                                                                <div className="text-lg font-bold text-green-700">฿{product.price.toLocaleString()}</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                       </div>
+                                    )}
+                                </div>
+                                {/* // [NEW FIX] Start - ขยายพื้นที่ฝั่งตะกร้าให้กว้างขึ้น (จาก 1/4 เป็น 1/3) จะทำให้อ่านและพิมพ์ได้ง่ายขึ้นมาก */}
+                                <div className="hidden lg:block lg:w-1/3 sticky top-24 h-[calc(100vh-8rem)]">
+                                {/* // [NEW FIX] End */}
+                                    <CartContent
+                                        cart={cart} 
+                                        updateQty={updateQty} 
+                                        removeFromCart={removeFromCart} 
+                                        memberId={memberId} setMemberId={setMemberId} 
+                                        memberName={memberName} setMemberName={setMemberName} 
+                                        phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} 
+                                        address={address} setAddress={setAddress} 
+                                        slipImage={slipImage} setSlipImage={setSlipImage} 
+                                        subTotal={subTotal}
+                                        shippingCost={shippingCost}
+                                        totalWeight={totalWeight}
+                                        totalAmount={totalAmount}
+                                        handleSubmitOrder={handleSubmitOrder} 
+                                        submitting={submitting} 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {isCartOpen && (
+                        <div className="lg:hidden fixed inset-0 z-50 flex flex-col bg-white animate-slide-up">
+                            <div className="p-4 border-b flex justify-between items-center shadow-sm">
+                                <h2 className="text-lg font-bold flex items-center gap-2"><i className="fas fa-shopping-basket text-green-600"></i> ตะกร้าสินค้า</h2>
+                                <button onClick={() => setIsCartOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center"><i className="fas fa-times"></i></button>
+                            </div>
+                            <div className="flex-grow overflow-hidden p-2 bg-gray-50">
+                                <CartContent 
+                                    cart={cart} 
+                                    updateQty={updateQty} 
+                                    removeFromCart={removeFromCart} 
+                                    memberId={memberId} setMemberId={setMemberId} 
+                                    memberName={memberName} setMemberName={setMemberName} 
+                                    phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} 
+                                    address={address} setAddress={setAddress} 
+                                    slipImage={slipImage} setSlipImage={setSlipImage} 
+                                    subTotal={subTotal}
+                                    shippingCost={shippingCost}
+                                    totalWeight={totalWeight}
+                                    totalAmount={totalAmount}
+                                    handleSubmitOrder={handleSubmitOrder} 
+                                    submitting={submitting} 
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
