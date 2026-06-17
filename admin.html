@@ -12,13 +12,29 @@
         body { font-family: 'Sarabun', sans-serif; }
         .truncate-2-lines { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         @media print { .no-print { display: none !important; } .print-only { display: block !important; } }
+        /* Debug Console Style */
+        #sys-log {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 150px;
+            background: #111; color: #0f0; font-family: monospace; font-size: 12px;
+            padding: 10px; overflow-y: auto; z-index: 9999; border-top: 2px solid #333;
+            display: none; 
+        }
+        #sys-log p { margin: 2px 0; border-bottom: 1px solid #222; }
+        .log-err { color: #ff5555; font-weight: bold; }
+        .log-info { color: #88ccff; }
+        .log-ok { color: #55ff55; }
+        
+        #debug-toggle {
+            position: fixed; bottom: 10px; right: 10px; z-index: 10000;
+            background: rgba(0,0,0,0.5); color: white; padding: 5px 10px;
+            border-radius: 5px; cursor: pointer; font-size: 10px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 p-4 lg:p-6 min-h-screen pb-40"> 
-    
-    <script>const API_URL = "https://script.google.com/macros/s/AKfycbxsdP_i2FbLufr0Emis4Z3HLAONv0kwDIo6bj4tJVuldDgqABlYgitCNo_NlICTLJhV/exec";</script>
 
     <div class="max-w-7xl mx-auto no-print">
+        <!-- Header & Tabs -->
         <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-2">
@@ -26,6 +42,7 @@
                 </h1>
                 <p class="text-sm text-gray-500">สหกรณ์การเกษตรชุมพลบุรี จำกัด</p>
             </div>
+            
             <div class="bg-white p-1 rounded-lg shadow-sm border border-gray-200 flex">
                 <button onclick="switchTab('orders')" id="tab-orders" class="px-6 py-2 rounded-md text-sm font-bold transition-all bg-green-600 text-white shadow">
                     <i class="fas fa-file-invoice-dollar mr-1"></i> รายการขาย
@@ -36,30 +53,38 @@
             </div>
         </div>
 
-        <div id="view-orders" class="space-y-6">
+        <!-- ==================== TAB: ORDERS ==================== -->
+        <div id="view-orders" class="space-y-6 animate-fade-in">
+            <!-- Order Controls -->
             <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 flex flex-wrap gap-3 items-center justify-between">
                 <div class="flex items-center gap-2">
                     <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded border border-gray-200">
                         <span class="text-sm text-gray-600"><i class="far fa-calendar-alt"></i> วันที่:</span>
                         <input type="date" id="filterDate" onchange="filterOrders()" class="bg-transparent text-sm focus:outline-none text-gray-700">
                     </div>
+                    <button onclick="document.getElementById('filterDate').value=''; filterOrders();" class="text-xs text-gray-400 hover:text-red-500 underline">ล้างค่า</button>
                 </div>
                 <div class="flex gap-2">
+                    <button onclick="printReport()" class="bg-gray-700 text-white px-3 py-1.5 rounded hover:bg-gray-800 transition text-sm flex items-center gap-1 shadow">
+                        <i class="fas fa-print"></i> พิมพ์รายงาน
+                    </button>
                     <button onclick="loadOrders()" class="bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 transition text-sm flex items-center gap-1 shadow">
                         <i class="fas fa-sync-alt"></i> รีเฟรช
                     </button>
                 </div>
             </div>
+
+            <!-- Orders Table -->
             <div class="bg-white rounded-lg shadow overflow-hidden border border-gray-200">
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Order Info</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">ลูกค้า</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">รายการ</th>
-                                <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">ยอดรวม</th>
-                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">จัดการ</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Order Info</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">ลูกค้า</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-1/3">รายการสินค้า</th>
+                                <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">ยอดรวม</th>
+                                <th class="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">จัดการ</th>
                             </tr>
                         </thead>
                         <tbody id="orderTableBody" class="bg-white divide-y divide-gray-200">
@@ -70,90 +95,457 @@
             </div>
         </div>
 
-        <div id="view-products" class="hidden space-y-6">
+        <!-- ==================== TAB: PRODUCTS ==================== -->
+        <div id="view-products" class="hidden space-y-6 animate-fade-in">
+            <!-- Product Controls -->
             <div class="flex justify-between items-center bg-white p-3 rounded-lg shadow-sm border border-gray-200">
                 <h2 class="font-bold text-gray-700 ml-2 border-l-4 border-green-500 pl-2">รายการสินค้าทั้งหมด</h2>
                 <div class="flex gap-2">
-                    <button onclick="openProductModal()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-bold shadow flex items-center gap-2 text-sm">
+                    <button onclick="openProductModal()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition text-sm font-bold shadow-green-200 shadow flex items-center gap-2">
                         <i class="fas fa-plus"></i> เพิ่มสินค้า
+                    </button>
+                    <button onclick="loadProducts()" class="bg-gray-100 text-gray-600 px-3 py-2 rounded hover:bg-gray-200 transition text-sm shadow-sm border border-gray-200">
+                        <i class="fas fa-sync-alt"></i>
                     </button>
                 </div>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4" id="productGrid"></div>
+
+            <!-- Products Table -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4" id="productGrid">
+                <div class="col-span-full text-center py-10 text-gray-500">กำลังโหลดข้อมูลสินค้า...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Debug UI -->
+    <div id="debug-toggle" onclick="toggleDebug()">🛠️ เปิด/ปิด Log</div>
+    <div id="sys-log">
+        <p class="log-info">--- System Ready ---</p>
+    </div>
+
+    <!-- ==================== MODALS ==================== -->
+    <!-- Modal เพิ่ม/แก้ไขสินค้า -->
+    <div id="productModal" class="fixed inset-0 bg-black bg-opacity-60 hidden items-center justify-center z-50 p-4 no-print backdrop-blur-sm transition-opacity">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all scale-100">
+            <div class="bg-green-600 px-6 py-4 flex justify-between items-center">
+                <h3 class="text-white font-bold text-lg flex items-center gap-2" id="modalTitle">
+                    <i class="fas fa-box-open"></i> เพิ่มสินค้าใหม่
+                </h3>
+                <button onclick="closeProductModal()" class="text-white hover:text-green-200 transition"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            <form id="productForm" onsubmit="handleSaveProduct(event)" class="p-6 space-y-4">
+                <input type="hidden" id="prodId">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">รูปภาพสินค้า</label>
+                    <div class="flex gap-3 items-start">
+                        <div class="flex-1">
+                            <input type="url" id="prodImage" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition" placeholder="วางลิงก์รูปภาพ (URL)..." onchange="document.getElementById('imgPreview').src = this.value || 'https://placehold.co/100'">
+                        </div>
+                        <img id="imgPreview" src="https://placehold.co/100" class="w-16 h-16 rounded border bg-gray-50 object-cover flex-shrink-0">
+                    </div>
+                </div>
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อสินค้า</label>
+                        <input type="text" id="prodName" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition" placeholder="ระบุชื่อสินค้า...">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่</label>
+                            <select id="prodCategory" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white">
+                                <option>ข้าวสาร</option>
+                                <option>ปุ๋ยเคมี</option>
+                                <option>เมล็ดพันธุ์</option>
+                                <option>เครื่องมือทางการเกษตร</option>
+                                <option>สินค้าแปรรูป</option>
+                                <option>อื่นๆ</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">หน่วยนับ</label>
+                            <input type="text" id="prodUnit" placeholder="เช่น ถุง, กระสอบ" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wide">ราคา (บาท)</label>
+                        <input type="number" id="prodPrice" required min="0" step="0.01" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-lg font-bold text-green-700 focus:ring-2 focus:ring-green-500 outline-none text-right font-mono" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wide">จำนวนสต๊อก</label>
+                        <input type="number" id="prodStock" required min="0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-lg font-bold text-gray-700 focus:ring-2 focus:ring-green-500 outline-none text-right font-mono" placeholder="0">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">สถานะการขาย</label>
+                    <select id="prodStatus" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white">
+                        <option value="พร้อมจำหน่าย">🟢 พร้อมจำหน่าย (ขายได้ปกติ)</option>
+                        <option value="สินค้าหมด">🔴 สินค้าหมด (แสดงแต่กดไม่ได้)</option>
+                        <option value="เลิกจำหน่าย">⚫ เลิกจำหน่าย (ซ่อนจากหน้าเว็บ)</option>
+                    </select>
+                </div>
+                <div class="flex gap-3 pt-4 border-t mt-2">
+                    <button type="button" onclick="closeProductModal()" class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition">ยกเลิก</button>
+                    <button type="submit" id="btnSaveProd" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow font-bold transition flex justify-center items-center gap-2">
+                        <i class="fas fa-save"></i> บันทึกข้อมูล
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal ดูสลิป -->
+    <div id="slipModal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 p-4 no-print backdrop-blur-sm" onclick="closeSlip()">
+        <div class="bg-transparent max-w-2xl w-full relative flex flex-col items-center" onclick="event.stopPropagation()">
+            <div class="absolute top-0 right-0 -mt-10 -mr-2">
+                <button onclick="closeSlip()" class="text-white hover:text-gray-300 text-2xl"><i class="fas fa-times"></i></button>
+            </div>
+            <img id="modalImage" src="" class="max-w-full max-h-[80vh] rounded shadow-2xl border-2 border-white">
+            <div class="mt-4 flex gap-3">
+                <a id="modalLink" href="" target="_blank" class="bg-white text-gray-800 px-4 py-2 rounded-full font-bold hover:bg-gray-100 transition shadow"><i class="fas fa-external-link-alt mr-1"></i> เปิดรูปเต็ม</a>
+                <button onclick="closeSlip()" class="bg-gray-800 text-white px-4 py-2 rounded-full font-bold hover:bg-gray-700 transition shadow border border-gray-600">ปิด</button>
+            </div>
         </div>
     </div>
 
     <script>
+        // --- DEBUGGING SYSTEM ---
+        function log(msg, type='info') {
+            const el = document.getElementById('sys-log');
+            const time = new Date().toLocaleTimeString();
+            let color = type === 'err' ? 'log-err' : (type === 'ok' ? 'log-ok' : 'log-info');
+            el.innerHTML += `<p><span style="color:#666">[${time}]</span> <span class="${color}">${msg}</span></p>`;
+            el.scrollTop = el.scrollHeight;
+            if (type === 'err') {
+                el.style.display = 'block'; 
+            }
+        }
+        function toggleDebug() {
+            const el = document.getElementById('sys-log');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+        window.onerror = function(msg, url, line) {
+            log(`Javascript Error: ${msg} (Line: ${line})`, 'err');
+            return false;
+        };
+
         let allOrders = [];
         let allProducts = [];
 
-        function switchTab(tab) {
-            document.getElementById('view-orders').classList.toggle('hidden', tab !== 'orders');
-            document.getElementById('view-products').classList.toggle('hidden', tab !== 'products');
-            if(tab === 'products') loadProducts();
+        // Standalone Mode Check
+        if (typeof google === 'undefined') {
+            log("Running in Standalone/Offline Mode (Mock Data)", 'info');
+             // Mock data setup (Removed to save space, assuming deployment environment)
+        } else {
+            log("Google Script API Detected.", 'ok');
         }
 
-        async function fetchAPI(action, data = {}) {
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action, ...data })
-            });
-            return await response.json();
+        function switchTab(tabName) {
+            document.getElementById('view-orders').classList.add('hidden');
+            document.getElementById('view-products').classList.add('hidden');
+            document.getElementById('tab-orders').className = "px-6 py-2 rounded-md text-sm font-bold transition-all text-gray-600 hover:bg-gray-50";
+            document.getElementById('tab-products').className = "px-6 py-2 rounded-md text-sm font-bold transition-all text-gray-600 hover:bg-gray-50";
+            if (tabName === 'orders') {
+                document.getElementById('view-orders').classList.remove('hidden');
+                document.getElementById('tab-orders').className = "px-6 py-2 rounded-md text-sm font-bold transition-all bg-green-600 text-white shadow transform scale-105";
+            } else {
+                document.getElementById('view-products').classList.remove('hidden');
+                document.getElementById('tab-products').className = "px-6 py-2 rounded-md text-sm font-bold transition-all bg-green-600 text-white shadow transform scale-105";
+                loadProducts(); 
+            }
         }
 
-        async function loadOrders() {
-            document.getElementById('orderTableBody').innerHTML = '<tr><td colspan="5" class="text-center py-10">กำลังโหลด...</td></tr>';
-            const orders = await fetchAPI('getOrders');
-            allOrders = orders;
-            renderOrders(orders);
+        // --- ORDER LOADING LOGIC ---
+        let loadTimer;
+        function loadOrders() {
+            log("Fetching Orders from Server...", 'info');
+            document.getElementById('orderTableBody').innerHTML = '<tr><td colspan="5" class="px-4 py-12 text-center text-gray-500"><i class="fas fa-circle-notch fa-spin text-2xl mb-2 text-green-500"></i><br>กำลังโหลดข้อมูล...</td></tr>';
+            
+            clearTimeout(loadTimer);
+            loadTimer = setTimeout(() => {
+                const tbody = document.getElementById('orderTableBody');
+                if (tbody.innerHTML.includes("กำลังโหลด")) {
+                    log("Timeout: Server took too long to respond.", 'err');
+                    tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-red-500">⚠️ โหลดนานผิดปกติ (Timeout)<br>ตรวจสอบการเชื่อมต่ออินเทอร์เน็ต</td></tr>';
+                }
+            }, 20000); 
+
+            if(typeof google !== 'undefined' && google.script.run) {
+                google.script.run
+                    .withSuccessHandler(renderOrders)
+                    .withFailureHandler(onLoadError)
+                    .getOrders();
+            }
+        }
+
+        function onLoadError(error) {
+            clearTimeout(loadTimer);
+            log("Server Side Error: " + error.message, 'err');
+            document.getElementById('orderTableBody').innerHTML = `<tr><td colspan="5" class="px-4 py-8 text-center text-red-500">❌ เกิดข้อผิดพลาดจากเซิร์ฟเวอร์:<br>${error.message}</td></tr>`;
         }
 
         function renderOrders(orders) {
+            clearTimeout(loadTimer);
+            log(`Received ${orders ? orders.length : 0} records.`, 'ok');
+
+            if (!orders) orders = [];
+            // ถ้าไม่ใช่ Array ให้แปลงเป็น Array ว่าง เพื่อไม่ให้หน้าจอพัง
+            if (!Array.isArray(orders)) {
+                log("Data Error: Received non-array data. Defaulting to empty.", 'err');
+                orders = [];
+            }
+
+            // [NEW FIX] แปลงรูปแบบวันที่จาก Sheet (เช่น DD/MM/YYYY หรือ พ.ศ.) ให้เป็นมาตรฐานสากล
+            // เพื่อให้ระบบ "กรองวันที่" และ "พิมพ์รายงาน" สามารถทำงานได้ โดยไม่ซ่อนออเดอร์
+            orders.forEach(row => {
+                if (row && row[1]) {
+                    let rawStr = String(row[1]);
+                    if (isNaN(new Date(rawStr).getTime())) {
+                        let parts = rawStr.split(/[\sT]/)[0].split('/');
+                        if (parts.length === 3) {
+                            let y = parseInt(parts[2], 10); 
+                            if (y > 2500) y -= 543; // แปลงปี พ.ศ. กลับเป็น ค.ศ.
+                            let m = parts[1].padStart(2, '0');
+                            let d = parts[0].padStart(2, '0');
+                            row[1] = `${y}-${m}-${d}T12:00:00`; // บังคับโครงสร้าง ISO
+                        }
+                    }
+                }
+            });
+
+            allOrders = orders;
+            filterOrders();
+        }
+
+        function filterOrders() {
+            const dateInput = document.getElementById('filterDate').value;
+            let displayOrders = allOrders;
+
+            if (dateInput) {
+                const filterDate = new Date(dateInput);
+                displayOrders = allOrders.filter(row => {
+                    if (!row || !row[1]) return false;
+                    const rowDate = new Date(row[1]);
+                    return rowDate.toDateString() === filterDate.toDateString();
+                });
+            }
+
             const tbody = document.getElementById('orderTableBody');
             tbody.innerHTML = '';
-            orders.forEach(row => {
-                let id=row[0], name=row[3], phone=row[4], items=JSON.parse(row[6] || "[]"), total=row[7], status=row[9], slip=row[8];
+            
+            if (displayOrders.length === 0) { 
+                tbody.innerHTML = `<tr><td colspan="5" class="px-4 py-12 text-center text-gray-400 bg-gray-50"><i class="fas fa-search text-3xl mb-3 text-gray-300"></i><br>ไม่พบคำสั่งซื้อ${dateInput ? ' ในวันที่เลือก' : ''}</td></tr>`; 
+                return; 
+            }
+
+            displayOrders.forEach((row, idx) => {
+                // Safe Data Access: ป้องกัน Error ถ้าข้อมูลไม่ครบช่อง
+                if (!row) return;
+                
+                let id = row[0] || "-";
+                let dateStr = row[1];
+                let memberId = row[2] || "-";
+                let name = row[3] || "ลูกค้าทั่วไป";
+                let phone = String(row[4] || "").replace(/'/g, "");
+                let address = row[5] || "";
+                let itemsJson = row[6] || "[]"; // ช่อง G (Index 6)
+                let totalStr = row[7] || "0";   // ช่อง H (Index 7)
+                let slipUrl = row[8] || "";     // ช่อง I (Index 8)
+                let status = row[9] || "รอยืนยัน"; // ช่อง J (Index 9)
+
+                // ถ้าช่อง Total ว่าง แต่ใน Sheet ไปโผล่ช่องอื่น (Robust check)
+                if (isNaN(Number(totalStr.toString().replace(/,/g,''))) && !isNaN(Number(address.toString().replace(/,/g,'')))) {
+                     log(`Warning: Row ${idx} might have shifted columns.`, 'info');
+                }
+                
+                let total = Number(totalStr.toString().replace(/,/g, ''));
+                if (isNaN(total)) total = 0;
+
+                let dateDisplay = "-";
+                if(dateStr) {
+                    try { dateDisplay = new Date(dateStr).toLocaleDateString('th-TH', {day: 'numeric', month: 'short', year: '2-digit'}) + ' ' + new Date(dateStr).toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'}); } catch(e){}
+                }
+
+                if (phone && !phone.startsWith('0') && phone.length > 5) phone = '0' + phone;
+
+                let itemsHtml = '';
+                try { 
+                    itemsHtml = JSON.parse(itemsJson).map(i => `<div class="flex justify-between items-center text-sm py-1 border-b border-gray-100 last:border-0"><span class="text-gray-700">${i.name}</span><span class="font-bold text-gray-900 bg-gray-100 px-2 rounded-full text-xs">x${i.qty}</span></div>`).join(''); 
+                } catch(e) { itemsHtml = '<span class="text-red-400 text-xs">Error parsing items</span>'; }
+
+                const labelData = encodeURIComponent(JSON.stringify({ id, name, phone, address, memberId }));
+                const slipBtn = (slipUrl && slipUrl.length > 5) ? `<button onclick="viewSlip('${slipUrl}')" class="text-blue-600 border border-blue-200 px-2 py-1 rounded bg-blue-50 text-xs hover:bg-blue-100 transition flex items-center gap-1"><i class="fas fa-image"></i> สลิป</button>` : `<span class="text-gray-300 text-xs italic px-2">ไม่มีสลิป</span>`;
+                
+                let statusColor = 'bg-gray-100 text-gray-800';
+                if(status === 'รอยืนยัน') statusColor = 'bg-yellow-100 text-yellow-800 border-yellow-200 border';
+                else if(status === 'กำลังจัดเตรียม') statusColor = 'bg-blue-100 text-blue-800 border-blue-200 border';
+                else if(status === 'จัดส่งแล้ว') statusColor = 'bg-green-100 text-green-800 border-green-200 border';
+                else if(status === 'ยกเลิก') statusColor = 'bg-red-100 text-red-800 border-red-200 border';
+
                 tbody.innerHTML += `
-                    <tr>
-                        <td class="px-4 py-4 text-xs">${row[1]}<br><span class="font-bold">${id}</span></td>
-                        <td class="px-4 py-4 text-sm">${name}<br>${phone}</td>
-                        <td class="px-4 py-4 text-xs">${items.map(i=>`${i.name} x${i.qty}`).join('<br>')}</td>
-                        <td class="px-4 py-4 text-right font-bold text-green-700">฿${Number(total).toLocaleString()}</td>
-                        <td class="px-4 py-4 text-center">
-                            <select onchange="updateStatus('${id}', this.value)" class="text-xs p-1 border rounded">
-                                <option ${status==='รอยืนยัน'?'selected':''}>รอยืนยัน</option>
-                                <option ${status==='จัดส่งแล้ว'?'selected':''}>จัดส่งแล้ว</option>
-                            </select>
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-4 align-top border-b border-gray-100">
+                            <div class="text-sm font-bold text-gray-700">${dateDisplay}</div>
+                            <div class="text-xs bg-gray-200 px-2 py-0.5 rounded w-max mt-2 font-mono text-gray-600 select-all cursor-pointer hover:bg-gray-300" title="คลิกเพื่อเลือก">${id}</div>
+                        </td>
+                        <td class="px-4 py-4 align-top border-b border-gray-100">
+                            <div class="text-sm font-bold text-gray-800">${name}</div>
+                            <div class="text-xs text-gray-500 mt-1 flex items-center gap-1"><i class="fas fa-phone fa-xs"></i> <a href="tel:${phone}" class="hover:underline text-blue-600">${phone}</a></div>
+                            <div class="text-xs text-gray-400 mt-1" title="${memberId}">ID: ${memberId}</div>
+                        </td>
+                        <td class="px-4 py-4 align-top border-b border-gray-100">
+                            <div class="bg-gray-50 rounded p-2 border border-gray-100">${itemsHtml}</div>
+                        </td>
+                        <td class="px-4 py-4 align-top text-right border-b border-gray-100">
+                            <div class="font-bold text-green-700 text-base">฿${total.toLocaleString()}</div>
+                        </td>
+                        <td class="px-4 py-4 align-top border-b border-gray-100">
+                            <div class="flex flex-col gap-2 items-center">
+                                <select onchange="updateStatus('${id}', this.value)" class="text-xs rounded w-full py-1.5 px-2 outline-none font-medium cursor-pointer ${statusColor}">
+                                    <option value="รอยืนยัน" ${status === 'รอยืนยัน'?'selected':''}>🟠 รอยืนยัน</option>
+                                    <option value="กำลังจัดเตรียม" ${status === 'กำลังจัดเตรียม'?'selected':''}>🔵 กำลังจัดเตรียม</option>
+                                    <option value="จัดส่งแล้ว" ${status === 'จัดส่งแล้ว'?'selected':''}>🟢 จัดส่งแล้ว</option>
+                                    <option value="ยกเลิก" ${status === 'ยกเลิก'?'selected':''}>🔴 ยกเลิก</option>
+                                </select>
+                                <div class="flex flex-wrap justify-center gap-2 w-full">
+                                    ${slipBtn}
+                                    <button onclick="printLabel('${labelData}')" class="border border-gray-300 px-2 py-1 rounded bg-white text-xs hover:bg-gray-50 text-gray-600 flex items-center gap-1 transition shadow-sm"><i class="fas fa-print"></i> ปะหน้า</button>
+                                </div>
+                            </div>
                         </td>
                     </tr>`;
             });
         }
 
-        async function updateStatus(orderId, newStatus) {
-            await fetchAPI('updateOrderStatus', { orderId, newStatus });
-            alert('อัปเดตสถานะสำเร็จ');
+        // --- PRODUCT LOADING ---
+        function loadProducts() {
+            log("Fetching Products...", 'info');
+            document.getElementById('productGrid').innerHTML = '<div class="col-span-full text-center py-12 text-gray-500"><i class="fas fa-circle-notch fa-spin text-2xl text-green-500 mb-2"></i><br>กำลังโหลดข้อมูลสินค้า...</div>';
+            google.script.run.withSuccessHandler(renderProducts).withFailureHandler(onLoadError).getProductsAdmin();
         }
 
-        async function loadProducts() {
-            const products = await fetchAPI('getProductsAdmin');
+        function renderProducts(products) {
+            log(`Received ${products ? products.length : 0} products.`, 'ok');
+            allProducts = products || [];
             const grid = document.getElementById('productGrid');
-            grid.innerHTML = products.map(p => `
-                <div class="bg-white p-4 rounded shadow border">
-                    <img src="${p.image}" class="h-32 w-full object-cover mb-2 rounded">
-                    <h3 class="font-bold text-sm">${p.name}</h3>
-                    <p class="text-green-600 font-bold">฿${p.price}</p>
-                    <button onclick='deleteProduct("${p.id}")' class="text-red-500 text-xs mt-2 underline">ลบสินค้า</button>
-                </div>
-            `).join('');
-        }
-
-        async function deleteProduct(id) {
-            if(confirm('ลบสินค้านี้?')) {
-                await fetchAPI('deleteProduct', { id });
-                loadProducts();
+            grid.innerHTML = '';
+            
+            if (allProducts.length === 0) {
+                grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-300">ยังไม่มีสินค้าในระบบ <br><span class="text-sm">กดปุ่ม "เพิ่มสินค้า" เพื่อเริ่มใช้งาน</span></div>';
+                return;
             }
+
+            allProducts.forEach(p => {
+                // Ensure p is valid object
+                if (!p) return;
+                
+                const statusBadge = p.status === 'พร้อมจำหน่าย' ? '<span class="bg-green-100 text-green-700 border border-green-200 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">ขายปกติ</span>' :
+                                    p.status === 'สินค้าหมด' ? '<span class="bg-red-100 text-red-700 border border-red-200 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">สินค้าหมด</span>' :
+                                    '<span class="bg-gray-200 text-gray-600 border border-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold shadow-sm">เลิกขาย</span>';
+                const opacityClass = p.status === 'เลิกจำหน่าย' ? 'opacity-60' : '';
+                const card = document.createElement('div');
+                card.className = `bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col group hover:shadow-lg transition-all duration-300 ${opacityClass}`;
+                card.innerHTML = `
+                    <div class="h-44 bg-gray-100 relative overflow-hidden group-hover:opacity-90 transition">
+                        <img src="${p.image}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" onerror="this.src='https://placehold.co/400?text=No+Image'">
+                        <div class="absolute top-2 right-2">${statusBadge}</div>
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2">
+                             <span class="text-white text-xs font-medium px-2 py-0.5 bg-black/30 rounded backdrop-blur-sm">${p.category}</span>
+                        </div>
+                    </div>
+                    <div class="p-4 flex flex-col flex-grow">
+                        <h3 class="font-bold text-gray-800 line-clamp-2 mb-3 flex-grow text-sm md:text-base h-10 leading-tight" title="${p.name}">${p.name}</h3>
+                        <div class="flex justify-between items-end mb-4 border-t border-gray-100 pt-3">
+                            <div><div class="text-xs text-gray-400">ราคา</div><div class="text-lg font-bold text-green-600">฿${Number(p.price).toLocaleString()}</div></div>
+                            <div class="text-right"><div class="text-xs text-gray-400">คงเหลือ</div><div class="text-sm font-bold ${p.stock < 10 ? 'text-red-500':'text-gray-700'}">${p.stock} <span class="text-xs font-normal text-gray-400">${p.unit}</span></div></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 mt-auto">
+                            <button onclick='editProduct(${JSON.stringify(p).replace(/'/g, "&#39;")})' class="bg-blue-50 text-blue-600 py-2 rounded-lg hover:bg-blue-600 hover:text-white text-xs font-bold transition flex justify-center items-center gap-1"><i class="fas fa-edit"></i> แก้ไข</button>
+                            <button onclick="deleteProduct('${p.id}')" class="bg-red-50 text-red-600 py-2 rounded-lg hover:bg-red-600 hover:text-white text-xs font-bold transition flex justify-center items-center gap-1"><i class="fas fa-trash-alt"></i> ลบ</button>
+                        </div>
+                    </div>`;
+                grid.appendChild(card);
+            });
         }
 
+        // Functions for Modals
+        function openProductModal() { document.getElementById('productForm').reset(); document.getElementById('prodId').value = ''; document.getElementById('modalTitle').innerHTML = '<i class="fas fa-box-open"></i> เพิ่มสินค้าใหม่'; document.getElementById('imgPreview').src = 'https://placehold.co/100'; document.getElementById('productModal').classList.remove('hidden'); document.getElementById('productModal').classList.add('flex'); }
+        function editProduct(p) { document.getElementById('modalTitle').innerHTML = '<i class="fas fa-edit"></i> แก้ไขสินค้า'; document.getElementById('prodId').value = p.id; document.getElementById('prodName').value = p.name; document.getElementById('prodCategory').value = p.category; document.getElementById('prodPrice').value = p.price; document.getElementById('prodUnit').value = p.unit; document.getElementById('prodStock').value = p.stock || 0; document.getElementById('prodImage').value = p.image; document.getElementById('prodStatus').value = p.status; document.getElementById('imgPreview').src = p.image || 'https://placehold.co/100'; document.getElementById('productModal').classList.remove('hidden'); document.getElementById('productModal').classList.add('flex'); }
+        function closeProductModal() { document.getElementById('productModal').classList.add('hidden'); document.getElementById('productModal').classList.remove('flex'); }
+        function handleSaveProduct(e) { e.preventDefault(); const btn = document.getElementById('btnSaveProd'); const originalText = btn.innerHTML; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> กำลังบันทึก...'; btn.disabled = true; const product = { id: document.getElementById('prodId').value, name: document.getElementById('prodName').value, category: document.getElementById('prodCategory').value, price: document.getElementById('prodPrice').value, unit: document.getElementById('prodUnit').value, stock: document.getElementById('prodStock').value, image: document.getElementById('prodImage').value, status: document.getElementById('prodStatus').value }; google.script.run.withSuccessHandler(() => { closeProductModal(); loadProducts(); btn.innerHTML = originalText; btn.disabled = false; }).saveProduct(product); }
+        function deleteProduct(id) { if(confirm('⚠️ คำเตือน: คุณแน่ใจหรือไม่ที่จะลบสินค้านี้?\nการกระทำนี้ไม่สามารถย้อนกลับได้')) { google.script.run.withSuccessHandler(loadProducts).deleteProduct(id); } }
+        function updateStatus(id, val) { google.script.run.updateOrderStatus(id, val); const toast = document.createElement('div'); toast.className = 'fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded shadow-lg z-50 text-sm animate-fade-in-up'; toast.innerHTML = `<i class="fas fa-check-circle text-green-400"></i> อัปเดตสถานะเป็น "${val}" แล้ว`; document.body.appendChild(toast); setTimeout(() => toast.remove(), 2000); }
+        function viewSlip(url) { document.getElementById('modalImage').src = url; document.getElementById('modalLink').href = url; document.getElementById('slipModal').classList.remove('hidden'); document.getElementById('slipModal').classList.add('flex'); }
+        function closeSlip() { document.getElementById('slipModal').classList.add('hidden'); document.getElementById('slipModal').classList.remove('flex'); }
+        
+        // --- PRINT LABEL FUNCTION (RESTORED) ---
+        function printLabel(encodedData) {
+            const data = JSON.parse(decodeURIComponent(encodedData));
+            const w = window.open('', '_blank', 'width=800,height=600');
+            w.document.write(`
+                <html>
+                <head>
+                    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+                    <style>
+                        body { font-family: 'Sarabun', sans-serif; padding: 20px; }
+                        .label-box { 
+                            border: 2px solid #000; 
+                            padding: 25px; 
+                            width: 140mm; 
+                            height: 95mm; 
+                            position: relative;
+                            box-sizing: border-box;
+                        }
+                        .sender { border-bottom: 1px dashed #999; padding-bottom: 15px; margin-bottom: 20px; font-size: 14px; }
+                        .receiver { font-size: 18px; margin-left: 20px; }
+                        .receiver strong { font-size: 24px; }
+                        .order-id { position: absolute; top: 10px; right: 10px; font-size: 12px; font-family: monospace; }
+                    </style>
+                </head>
+                <body onload="window.print()">
+                    <div class="label-box">
+                        <div class="order-id">ORDER: ${data.id}</div>
+                        <div class="sender">
+                            <strong>ผู้ส่ง (Sender):</strong><br>
+                            สหกรณ์การเกษตรชุมพลบุรี จำกัด<br>
+                            501 หมู่ 1 ต.ชุมพลบุรี อ.ชุมพลบุรี จ.สุรินทร์ 32190<br>
+                            โทร. 098-0248-343
+                        </div>
+                        <div class="receiver">
+                            <strong>กรุณาส่ง (Receiver):</strong><br><br>
+                            คุณ ${data.name}<br>
+                            ${data.address}<br><br>
+                            <strong>โทร: ${data.phone}</strong>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `);
+            w.document.close();
+        }
+
+        function printReport() {
+            const filterDate = document.getElementById('filterDate').value;
+            let filtered = allOrders;
+            let dateTitle = "ยอดขายทั้งหมด";
+            if(filterDate) { const t = new Date(filterDate); filtered = allOrders.filter(r => { if(!r || !r[1]) return false; const d = new Date(r[1]); return d.getDate()===t.getDate() && d.getMonth()===t.getMonth() && d.getFullYear()===t.getFullYear(); }); dateTitle = "ประจำวันที่ " + new Date(filterDate).toLocaleDateString('th-TH', { dateStyle: 'long' }); }
+            if (filtered.length === 0) { alert("ไม่พบข้อมูลสำหรับการออกรายงาน"); return; }
+            let totalSales = 0;
+            const rows = filtered.map((ord, idx) => { 
+                let total = Number((ord[7] || "0").toString().replace(/,/g, ''));
+                if(isNaN(total)) total = 0;
+                totalSales += total; 
+                let dateStr = "";
+                try { dateStr = new Date(ord[1]).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'}); } catch(e){}
+                return `<tr><td style="text-align:center; padding:5px; border:1px solid #ddd;">${idx + 1}</td><td style="padding:5px; border:1px solid #ddd;">${ord[0]}</td><td style="padding:5px; border:1px solid #ddd;">${dateStr}</td><td style="padding:5px; border:1px solid #ddd;">${ord[3]}</td><td style="padding:5px; border:1px solid #ddd; text-align:center;">${ord[9] || '-'}</td><td style="text-align:right; padding:5px; border:1px solid #ddd;">${total.toLocaleString()}</td></tr>`; 
+            }).join('');
+            const win = window.open('', '_blank'); win.document.write(`<html><head><title>รายงานการขาย</title><link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;700&display=swap" rel="stylesheet"><style>body{font-family:'Sarabun',sans-serif;padding:20px;color:#333}.header{text-align:center;margin-bottom:20px}table{width:100%;border-collapse:collapse;font-size:13px}th{background:#f0f0f0;border:1px solid #ccc;padding:8px}.total-row{font-weight:bold;background:#fafafa}.footer{margin-top:30px;text-align:right;font-size:12px;color:#999}</style></head><body onload="window.print()"><div class="header"><h1>รายงานสรุปยอดขายสินค้า</h1><p>${dateTitle}</p><p>สหกรณ์การเกษตรชุมพลบุรี จำกัด</p></div><table><thead><tr><th width="5%">ลำดับ</th><th width="15%">เลขที่ Order</th><th width="10%">เวลา</th><th width="30%">ลูกค้า</th><th width="15%">สถานะ</th><th width="15%">ยอดเงิน (บาท)</th></tr></thead><tbody>${rows}<tr class="total-row"><td colspan="5" style="text-align:right; padding:8px; border:1px solid #ddd;">รวมยอดขายสุทธิ</td><td style="text-align:right; padding:8px; border:1px solid #ddd;">${totalSales.toLocaleString()}</td></tr></tbody></table><div class="footer">พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</div></body></html>`); win.document.close();
+        }
+
+        // Initialize Styles
+        document.body.classList.add('bg-gray-100');
+        // Start
         loadOrders();
     </script>
 </body>

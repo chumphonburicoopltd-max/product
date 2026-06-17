@@ -1,8 +1,8 @@
 // ==========================================
-// ⚙️ ส่วนตั้งค่า (CONFIG) - แก้ไขตรงนี้ครับ
+// ⚙️ ส่วนตั้งค่า (CONFIG) 
 // ==========================================
 const ADMIN_EMAIL = "chumphonburicoopltd@gmail.com"; // ✉️ ใส่อีเมลที่ต้องการรับแจ้งเตือนที่นี่
-const FOLDER_ID = "1nwG2OGUZDdJO6ze1MlYXjbd2kC067Y5s";     // 📁 ID โฟลเดอร์เก็บรูปสลิปใน Google Drive
+const FOLDER_ID = "1nwG2OGUZDdJO6ze1MlYXjbd2kC067Y5s";     // 📁 ID โฟลเดอร์เก็บรูปสลิปใน Google Drive
 // [NEW FEATURE] Start - ตั้งค่า PromptPay ของสหกรณ์ฯ
 // ❌ ห้ามใส่เลขบัญชี (เช่น 015262938259) เพราะระบบจะสแกนไม่ติด
 // ✅ ให้ใส่ "เบอร์โทรศัพท์ 10 หลัก" หรือ "เลขนิติบุคคล 13 หลัก" ที่ใช้ผูกกับ ธ.ก.ส.
@@ -12,24 +12,49 @@ const SHEET_ORDERS = "Orders";
 const SHEET_PRODUCTS = "Products";
 
 // ==========================================
-// 1. ส่วนเชื่อมต่อหน้าเว็บ (ROUTING)
+// 1. ส่วนเชื่อมต่อหน้าเว็บ (API ROUTING) - 🌟 อัปเดตใหม่สำหรับ GitHub Pages
 // ==========================================
-function doGet(e) {
-  var page = (e && e.parameter && e.parameter.page) ? e.parameter.page : 'index';
+function doPost(e) {
+  try {
+    const request = JSON.parse(e.postData.contents);
+    const action = request.action;
+    let result;
 
-  // ถ้าเข้าด้วย ?page=admin ให้ไปหน้า Admin (ไฟล์ admin.html)
-  if (page == 'admin') {
-    return HtmlService.createTemplateFromFile('admin').evaluate()
-      .setTitle('ระบบจัดการหลังบ้าน - สหกรณ์ฯ')
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    // แยกการทำงานตาม Action ที่หน้าเว็บ (GitHub) ส่งมา
+    if (action === 'getProductData') {
+      result = getProductData();
+    } else if (action === 'submitOrder') {
+      result = submitOrder(request.data);
+    } else if (action === 'getOrders') {
+      result = getOrders();
+    } else if (action === 'getProductsAdmin') {
+      result = getProductsAdmin();
+    } else if (action === 'updateOrderStatus') {
+      result = updateOrderStatus(request.orderId, request.newStatus);
+    } else if (action === 'saveProduct') {
+      result = saveProduct(request.product);
+    } else if (action === 'deleteProduct') {
+      result = deleteProduct(request.id);
+    } else if (action === 'getPromptPayQR') {
+      result = getPromptPayQR(request.amount);
+    } else {
+      result = { error: 'ไม่พบคำสั่ง Action' };
+    }
+
+    // ส่งผลลัพธ์กลับไปที่หน้าเว็บ
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ error: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
   }
-  
-  // ถ้าเข้าปกติ ให้ไปหน้าลูกค้า (ไฟล์ index.html ที่เป็น React)
-  return HtmlService.createTemplateFromFile('index').evaluate()
-    .setTitle('สหกรณ์การเกษตรชุมพลบุรี')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// เปิด doGet ไว้เพื่อให้ลิงก์เว็บแอปไม่ขึ้น Error เวลาคนเผลอกดเข้ามาตรงๆ
+function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({ status: 'API is running successfully' }))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 // ==========================================
@@ -324,12 +349,12 @@ function sendOrderEmail(orderData) {
     `;
 
     MailApp.sendEmail({
-      to: ADMIN_EMAIL,
-      subject: subject,
-      htmlBody: htmlBody
-    });
-    
-  } catch (e) { console.error("Email Error: " + e.toString()); }
+      to: ADMIN_EMAIL,
+      subject: subject,
+      htmlBody: htmlBody
+    });
+    
+  } catch (e) { console.error("Email Error: " + e.toString()); }
 }
 
 // [NEW FEATURE] Start - ฟังก์ชันสร้างลิงก์รูปภาพ PromptPay QR Code
