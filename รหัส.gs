@@ -358,9 +358,28 @@ function sendOrderEmail(orderData) {
 }
 
 // [NEW FEATURE] Start - ฟังก์ชันสร้างลิงก์รูปภาพ PromptPay QR Code
+
 function getPromptPayQR(amount) {
   if (!amount || amount <= 0) return "";
   // ใช้บริการ API มาตรฐานสำหรับสร้าง PromptPay QR (คืนค่าเป็น URL ของรูปภาพ)
   return "https://promptpay.io/" + PROMPTPAY_ID + "/" + amount + ".png";
 }
 // [NEW FEATURE] End
+function doGet(e) {
+  // ตรวจสอบว่าเรียกหน้า admin หรือไม่
+  if (e.parameter.page === 'admin') {
+    // ตรวจสอบว่ามีการใส่รหัสผ่านถูกต้องในลิงก์หรือไม่
+    // วิธีเข้า: .../exec?page=admin&pass=รหัสผ่านของคุณ
+    if (e.parameter.pass === "1234") { // เปลี่ยน 1234 เป็นรหัสที่ต้องการ
+      return HtmlService.createHtmlOutputFromFile('admin')
+        .setTitle('ระบบจัดการหลังบ้าน')
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+    } else {
+      return HtmlService.createHtmlOutput("<h1>ไม่สามารถเข้าถึงระบบได้</h1><p>กรุณาตรวจสอบรหัสผ่านให้ถูกต้อง</p>");
+    }
+  }
+  
+  // กรณีไม่ใช่หน้า admin
+  return ContentService.createTextOutput(JSON.stringify({ status: 'API is running successfully' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
