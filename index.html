@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     
     <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' data: blob:;">
     
@@ -61,6 +61,14 @@
             from { opacity:0; transform:translateX(-50%) translateY(20px); }
             to   { opacity:1; transform:translateX(-50%) translateY(0px);  }
         }
+        @keyframes sheetUp {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0);    }
+        }
+        @keyframes backdropIn {
+            from { opacity:0; }
+            to   { opacity:1; }
+        }
 
         /* — Loader Spinner — */
         .loader {
@@ -98,6 +106,12 @@
             transform: translateY(-5px);
             box-shadow: var(--shadow-hover);
             border-color: #bbf7d0;
+        }
+        @media (hover: none) {
+            /* touch devices — disable hover lift, use active tap effect instead */
+            .product-card:hover { transform: none; box-shadow: var(--shadow-card); border-color: transparent; }
+            .product-card:active { transform: scale(0.97); box-shadow: var(--shadow-card); }
+            .product-card:hover .card-overlay { opacity: 0; }
         }
         .product-card:hover .card-overlay     { opacity: 1; }
         .product-card:hover .card-overlay-btn { transform: translateY(0); }
@@ -141,6 +155,8 @@
             font-size: 0.875rem; font-family: 'Sarabun', sans-serif;
             border: 1.5px solid #e2e8f0; border-radius: 10px;
             outline: none; transition: all 0.2s; color: #1e293b;
+            /* prevent iOS zoom on focus */
+            font-size: max(16px, 0.875rem);
         }
         .form-field:focus {
             border-color: #16a34a;
@@ -157,11 +173,15 @@
             display: flex; align-items: center; justify-content: center; gap: 8px;
             box-shadow: 0 4px 15px rgba(22,101,52,0.35);
             transition: all 0.25s; position: relative; overflow: hidden;
+            /* Large tap target for mobile */
+            min-height: 52px;
+            -webkit-tap-highlight-color: transparent;
         }
         .btn-submit:hover:not(:disabled) {
             box-shadow: 0 8px 25px rgba(22,101,52,0.45);
             transform: translateY(-2px);
         }
+        .btn-submit:active:not(:disabled) { transform: scale(0.98); }
         .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
         .btn-submit::after {
             content: ''; position: absolute; inset: 0;
@@ -175,7 +195,8 @@
         .search-box input {
             width: 100%; padding: 0.7rem 1rem 0.7rem 2.8rem;
             border-radius: 14px; border: 1.5px solid #e2e8f0;
-            font-family: 'Sarabun', sans-serif; font-size: 0.9rem;
+            font-family: 'Sarabun', sans-serif;
+            font-size: max(16px, 0.9rem); /* prevent iOS zoom */
             background: white; outline: none; transition: all 0.25s;
             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
@@ -197,19 +218,24 @@
             border-radius: 10px;
         }
 
-        /* — Floating Cart (Mobile) — */
+        /* — Floating Cart Button (Mobile) — */
         .float-cart {
-            position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%);
+            position: fixed;
+            bottom: calc(1.25rem + env(safe-area-inset-bottom));
+            left: 50%; transform: translateX(-50%);
             background: var(--grad-green); color: white;
-            border-radius: 50px; padding: 0.7rem 1.5rem;
+            border-radius: 50px; padding: 0.75rem 1.6rem;
             display: flex; align-items: center; gap: 10px;
             font-weight: 700; font-size: 0.9rem; font-family: 'Sarabun', sans-serif;
             box-shadow: 0 8px 30px rgba(22,101,52,0.45);
             cursor: pointer; z-index: 40; border: none;
-            transition: box-shadow 0.25s;
+            transition: box-shadow 0.25s, transform 0.15s;
             animation: slideUp 0.4s ease both;
+            white-space: nowrap;
+            -webkit-tap-highlight-color: transparent;
         }
-        .float-cart:hover { box-shadow: 0 12px 35px rgba(22,101,52,0.55); }
+        .float-cart:active { transform: translateX(-50%) scale(0.96); }
+        .float-cart:hover  { box-shadow: 0 12px 35px rgba(22,101,52,0.55); }
         .float-badge {
             background: #ef4444; color: white;
             border-radius: 50px; padding: 1px 8px;
@@ -217,8 +243,54 @@
             animation: badgePulse 1.8s ease-in-out infinite;
         }
 
+        /* ═══════════════════════════════════════
+           📱 MOBILE BOTTOM-SHEET CART DRAWER
+        ═══════════════════════════════════════ */
+        .sheet-backdrop {
+            position: fixed; inset: 0; z-index: 50;
+            background: rgba(0,0,0,0.45);
+            backdrop-filter: blur(2px);
+            animation: backdropIn 0.25s ease;
+        }
+        .sheet-drawer {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 51;
+            background: white;
+            border-radius: 24px 24px 0 0;
+            max-height: 92dvh;
+            display: flex; flex-direction: column;
+            animation: sheetUp 0.35s cubic-bezier(0.32,0.72,0,1);
+            box-shadow: 0 -8px 40px rgba(0,0,0,0.18);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .sheet-handle {
+            width: 40px; height: 4px;
+            background: #d1d5db; border-radius: 99px;
+            margin: 10px auto 0;
+            flex-shrink: 0;
+        }
+        .sheet-header {
+            padding: 0.75rem 1rem 0.75rem;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #f1f5f9;
+            flex-shrink: 0;
+        }
+        .sheet-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .sheet-close-btn {
+            width: 36px; height: 36px;
+            background: #f1f5f9; border: none; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            color: #64748b; font-size: 0.9rem;
+            cursor: pointer; transition: background 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .sheet-close-btn:hover { background: #e2e8f0; }
+
         /* — Toast — */
-        .toast-wrap { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100; }
+        .toast-wrap { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 100; width: max-content; max-width: calc(100vw - 2rem); }
         .toast-err {
             background: linear-gradient(135deg, #dc2626, #ef4444); color: white;
             padding: 0.7rem 1.4rem; border-radius: 50px; font-weight: 600;
@@ -274,7 +346,10 @@
             background: #fafafa; border: 1px solid #f1f5f9;
             border-radius: 12px; transition: background 0.2s, border-color 0.2s;
         }
-        .cart-item:hover { background: #f0fdf4; border-color: #bbf7d0; }
+        .cart-item:active { background: #f0fdf4; border-color: #bbf7d0; }
+        @media (hover: hover) {
+            .cart-item:hover { background: #f0fdf4; border-color: #bbf7d0; }
+        }
 
         /* — Quantity Controls — */
         .qty-ctrl {
@@ -283,10 +358,11 @@
             display: flex; align-items: center; gap: 4px;
         }
         .qty-btn {
-            width: 26px; height: 26px; display: flex;
+            width: 32px; height: 32px; display: flex;
             align-items: center; justify-content: center;
             border-radius: 8px; font-size: 0.65rem;
             cursor: pointer; transition: all 0.15s; border: none;
+            -webkit-tap-highlight-color: transparent;
         }
         .qty-minus { background: #fee2e2; color: #dc2626; }
         .qty-minus:hover { background: #fca5a5; }
@@ -306,6 +382,22 @@
             padding: 1rem 1.5rem; text-align: center; font-size: 0.78rem;
         }
         .grayscale { filter: grayscale(100%); }
+
+        /* ═══════════════════════════════════════
+           📱 RESPONSIVE BREAKPOINTS
+        ═══════════════════════════════════════ */
+
+        /* Extra-small phones — tighter grid images */
+        @media (max-width: 380px) {
+            .product-card .price-grad { font-size: 0.95rem; }
+        }
+
+        /* Tablet — show side-by-side layout earlier (md = 768px) */
+        @media (min-width: 768px) and (max-width: 1023px) {
+            /* On tablet, keep single column scrollable layout; 
+               cart stays as bottom sheet but we give it more width */
+            .float-cart { width: 60%; justify-content: center; }
+        }
     </style>
 </head>
 <body>
@@ -750,7 +842,7 @@
                         <div className="max-w-7xl mx-auto px-4 lg:px-6 py-6">
                             <div className="flex flex-col lg:flex-row gap-6 items-start">
 
-                                <div className="w-full lg:w-2/3 flex flex-col gap-4">
+                                <div className="w-full lg:w-3/5 flex flex-col gap-4" style=${{ minWidth: 0 }}>
 
                                     <div className="search-box">
                                         <i className="fas fa-search s-icon"></i>
@@ -775,7 +867,7 @@
                                     `}
 
                                     ${loading ? html`
-                                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                                             ${[1,2,3,4,5,6].map(i => html`
                                                 <div key=${i} className="rounded-2xl overflow-hidden border border-gray-100 bg-white">
                                                     <div className="skeleton h-40 rounded-none"></div>
@@ -794,7 +886,7 @@
                                             <p className="text-sm text-gray-400 mt-1">ลองค้นหาด้วยคำอื่น หรือเลือกหมวดหมู่อื่น</p>
                                         </div>
                                     ` : html`
-                                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                                        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                                             ${filteredProducts.map(product => {
                                                 const isOutOfStock = product.status === 'สินค้าหมด' || product.stock <= 0;
                                                 return html`
@@ -837,7 +929,7 @@
                                     `}
                                 </div>
 
-                                <div className="hidden lg:block lg:w-1/3 sticky top-24 h-[calc(100vh-8rem)]">
+                                <div className="hidden lg:block lg:w-2/5 sticky top-24 h-[calc(100vh-8rem)]">
                                     <${CartContent}
                                         cart=${cart} 
                                         updateQty=${updateQty} 
@@ -865,16 +957,22 @@
                     </footer>
 
                     ${isCartOpen && html`
-                        <div className="lg:hidden fixed inset-0 z-50 flex flex-col bg-white" style=${{ animation:'none' }}>
-                            <div className="p-4 border-b border-gray-100 flex justify-between items-center shadow-sm">
-                                <h2 className="text-lg font-extrabold flex items-center gap-2 text-gray-800">
-                                    <i className="fas fa-shopping-basket text-green-600"></i> ตะกร้าสินค้า
+                        <!-- Backdrop -->
+                        <div className="sheet-backdrop lg:hidden" onClick=${() => setIsCartOpen(false)}></div>
+                        <!-- Bottom-sheet drawer -->
+                        <div className="sheet-drawer lg:hidden">
+                            <div className="sheet-handle"></div>
+                            <div className="sheet-header">
+                                <h2 className="text-base font-extrabold flex items-center gap-2 text-gray-800">
+                                    <i className="fas fa-shopping-basket text-green-600"></i>
+                                    ตะกร้าสินค้า
+                                    <span className="bg-green-100 text-green-700 text-xs px-2.5 py-0.5 rounded-full font-bold">${cart.reduce((s,i)=>s+i.qty,0)} รายการ</span>
                                 </h2>
-                                <button onClick=${() => setIsCartOpen(false)} className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-500 transition-colors border-none cursor-pointer">
+                                <button onClick=${() => setIsCartOpen(false)} className="sheet-close-btn">
                                     <i className="fas fa-times"></i>
                                 </button>
                             </div>
-                            <div className="flex-grow overflow-hidden p-2 bg-gray-50">
+                            <div className="sheet-body">
                                 <${CartContent} 
                                     cart=${cart} 
                                     updateQty=${updateQty} 
